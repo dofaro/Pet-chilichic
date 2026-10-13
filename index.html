@@ -285,7 +285,21 @@
       <label>Nome do pet
         <input type="text" id="a-pet" required placeholder="Ex: Bruce">
       </label>
-      <label>Serviço
+      <label>Porte do pet
+        <select id="a-porte" required>
+          <option value="Pequeno">Pequeno</option>
+          <option value="Médio">Médio</option>
+          <option value="Grande">Grande</option>
+        </select>
+      </label>
+      <label class="full">O que você quer marcar?
+        <select id="a-tipo" required>
+          <option value="avulso">Serviço avulso</option>
+          <option value="quinzenal">Plano quinzenal</option>
+          <option value="mensal">Plano mensal</option>
+        </select>
+      </label>
+      <label class="full" id="label-servico">Serviço
         <select id="a-servico" required>
           <option value="Banho">Banho</option>
           <option value="Tosa geral">Tosa geral</option>
@@ -294,6 +308,7 @@
           <option value="Cuidados especiais">Cuidados especiais</option>
         </select>
       </label>
+      <p class="section-sub" id="preco-estimado" style="margin:-6px 0 0; font-size:0.95rem; font-weight:600; color:var(--yellow);"></p>
       <label class="full">Data
         <input type="date" id="a-data" required>
       </label>
@@ -390,7 +405,7 @@ function renderCadastro(){
 function renderAgenda(){
   const list = loadList('pcc_agenda');
   const el = document.getElementById('lista-agenda');
-  el.innerHTML = list.map(a => `<div class="list-item"><span><span class="tag">${a.pet}</span> · ${a.servico}</span><span>${a.data} às ${a.hora}</span></div>`).join('');
+  el.innerHTML = list.map(a => `<div class="list-item"><span><span class="tag">${a.pet}</span>${a.porte ? ' ('+a.porte+')' : ''} · ${a.servico}</span><span>${a.data} às ${a.hora}</span></div>`).join('');
 }
 document.getElementById('form-cadastro').addEventListener('submit', function(e){
   e.preventDefault();
@@ -412,7 +427,6 @@ document.getElementById('form-cadastro').addEventListener('submit', function(e){
   list.unshift(entry);
   saveList('pcc_pets', list);
   renderCadastro();
-  this.reset();
   const c = document.getElementById('confirm-cadastro');
   c.classList.add('show');
   setTimeout(()=>c.classList.remove('show'), 6000);
@@ -447,11 +461,72 @@ campoData.addEventListener('change', async function(){
     : 'Nenhum horário marcado nesse dia ainda.';
 });
 
+const NOME_PLANO = {
+  avulso: null,
+  quinzenal: 'Plano quinzenal (incluso uma tosa higiênica)',
+  mensal: 'Plano mensal (incluso hidratação, tosa higiênica e desembolo)'
+};
+
+const PRECOS = {
+  avulso: {
+    'Banho': { Pequeno: 45, 'Médio': 55, Grande: 75 },
+    'Tosa geral': { Pequeno: 90, 'Médio': 90, Grande: 90 },
+    'Tosa higiênica': { Pequeno: 15, 'Médio': 15, Grande: 15 },
+    'Hidratação': { Pequeno: 20, 'Médio': 20, Grande: 20 },
+    'Cuidados especiais': null
+  },
+  quinzenal: { Pequeno: 95, 'Médio': 105, Grande: 145 },
+  mensal: { Pequeno: 155, 'Médio': 185, Grande: 220 }
+};
+
+function formatReais(v){
+  return 'R$ ' + v.toFixed(2).replace('.', ',');
+}
+
+function atualizarPreco(){
+  const tipo = document.getElementById('a-tipo').value;
+  const porte = document.getElementById('a-porte').value;
+  const el = document.getElementById('preco-estimado');
+  let preco = null;
+  if(tipo === 'avulso'){
+    const servico = document.getElementById('a-servico').value;
+    const tabela = PRECOS.avulso[servico];
+    preco = tabela ? tabela[porte] : null;
+  } else {
+    preco = PRECOS[tipo][porte];
+  }
+  if(preco == null){
+    el.textContent = 'Valor sob consulta — combinamos pelo WhatsApp.';
+  } else {
+    el.textContent = 'Valor estimado: ' + formatReais(preco) + ' (porte ' + porte.toLowerCase() + '). +R$ 5,00 se pagar no cartão.';
+  }
+}
+
+function atualizarCampoServico(){
+  const tipo = document.getElementById('a-tipo').value;
+  const label = document.getElementById('label-servico');
+  const select = document.getElementById('a-servico');
+  if(tipo === 'avulso'){
+    label.style.display = '';
+    select.required = true;
+  } else {
+    label.style.display = 'none';
+    select.required = false;
+  }
+  atualizarPreco();
+}
+document.getElementById('a-tipo').addEventListener('change', atualizarCampoServico);
+document.getElementById('a-servico').addEventListener('change', atualizarPreco);
+document.getElementById('a-porte').addEventListener('change', atualizarPreco);
+atualizarCampoServico();
+
 document.getElementById('form-agenda').addEventListener('submit', async function(e){
   e.preventDefault();
+  const tipo = document.getElementById('a-tipo').value;
   const entry = {
     pet: document.getElementById('a-pet').value,
-    servico: document.getElementById('a-servico').value,
+    porte: document.getElementById('a-porte').value,
+    servico: tipo === 'avulso' ? document.getElementById('a-servico').value : NOME_PLANO[tipo],
     data: document.getElementById('a-data').value,
     hora: document.getElementById('a-hora').value
   };
@@ -477,18 +552,19 @@ document.getElementById('form-agenda').addEventListener('submit', async function
     return;
   }
 
+  const valorTexto = document.getElementById('preco-estimado').textContent;
   notificarWhatsApp(
     '✂️ Novo horário marcado — Pet ChiliChic\n' +
-    'Pet: ' + entry.pet + '\n' +
+    'Pet: ' + entry.pet + ' (' + entry.porte + ')\n' +
     'Serviço: ' + entry.servico + '\n' +
     'Data: ' + entry.data + '\n' +
-    'Horário: ' + entry.hora
+    'Horário: ' + entry.hora + '\n' +
+    valorTexto
   );
   const list = loadList('pcc_agenda');
   list.unshift(entry);
   saveList('pcc_agenda', list);
   renderAgenda();
-  this.reset();
   document.getElementById('ocupados-do-dia').textContent = '';
   const c = document.getElementById('confirm-agenda');
   c.classList.add('show');
